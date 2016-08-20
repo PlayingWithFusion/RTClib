@@ -1,5 +1,8 @@
 // Code by JeeLabs http://news.jeelabs.org/code/
 // Released to the public domain! Enjoy!
+// 2016May: added support for MCP79410 RTC from Microchip
+//   - J Steinlage, Playing With Fusion, Inc.
+//	 - www.playingwithfusion.com
 
 #include <Wire.h>
 #include "RTClib.h"
@@ -503,4 +506,103 @@ void RTC_DS3231::writeSqwPinMode(Ds3231SqwPinMode mode) {
   write_i2c_register(DS3231_ADDRESS, DS3231_CONTROL, ctrl);
 
   //Serial.println( read_i2c_register(DS3231_ADDRESS, DS3231_CONTROL), HEX);
+}
+
+/*********************************************************************/
+/********************* RTC MCP79410 Implementation *******************/
+/*********************************************************************/
+
+boolean RTC_MCP79410::begin(void) {
+  Wire.begin();
+  return true;
+}
+
+uint8_t RTC_MCP79410::isrunning(void) {
+  Wire.beginTransmission(MCP7941X_ADDRESS);
+  Wire._I2C_WRITE((byte)0);
+  Wire.endTransmission();
+
+  Wire.requestFrom(MCP7941X_ADDRESS, 1);
+  uint8_t xt_ss = Wire._I2C_READ();
+  return (xt_ss>>7);						// return value of xtal start-stop bit
+}
+
+void RTC_MCP79410::adjust(const DateTime& dt, uint8_t batt_bkup_en) {
+  uint8_t reg03_val;
+  if(1 == batt_bkup_en){reg03_val = 0x08;}
+  else{reg03_val = 0x00;}
+  
+  
+  Wire.beginTransmission(MCP7941X_ADDRESS);
+  Wire._I2C_WRITE((byte)0); 				// start at register 0
+  Wire._I2C_WRITE((bin2bcd(dt.second()) | 0x80));		// enable 
+  Wire._I2C_WRITE(bin2bcd(dt.minute()));
+  Wire._I2C_WRITE(bin2bcd(dt.hour()));
+  Wire._I2C_WRITE(((dt.dayOfTheWeek() & ~0x08) | reg03_val));	// raw weekday, 1 = Sunday
+  Wire._I2C_WRITE(bin2bcd(dt.day()));
+  Wire._I2C_WRITE(bin2bcd(dt.month()));
+  Wire._I2C_WRITE(bin2bcd(dt.year() - 2000));
+  Wire.endTransmission();
+}
+
+DateTime RTC_MCP79410::now() {
+  Wire.beginTransmission(MCP7941X_ADDRESS);
+  Wire._I2C_WRITE((byte)0);					// start at RTCC reg 0
+  Wire.endTransmission();
+
+  Wire.requestFrom(MCP7941X_ADDRESS, 7);	// 7 bytes to read
+  uint8_t ss = bcd2bin(Wire._I2C_READ() & 0x7F);
+  uint8_t mm = bcd2bin(Wire._I2C_READ());
+  uint8_t hh = bcd2bin(Wire._I2C_READ());
+  Wire._I2C_READ();							// weekday is saved in 'adjust fcn, could be used here
+  uint8_t d = bcd2bin(Wire._I2C_READ());
+  uint8_t m = bcd2bin((Wire._I2C_READ() & (~0x20)));
+  uint16_t y = bcd2bin(Wire._I2C_READ()) + 2000;
+  
+  return DateTime (y, m, d, hh, mm, ss);
+}
+
+uint8_t VccFault(void){
+  // start by reading Vcc fault bit
+  Wire.beginTransmission(MCP7941X_ADDRESS);
+  Wire._I2C_WRITE((uint8_t)3);				// start at RTCC reg 0x03
+  Wire.endTransmission();
+
+  Wire.requestFrom(MCP7941X_ADDRESS, 1);	// 1 bytes to read
+  uint8_t temp_val = (Wire._I2C_READ() & 0x10);
+  uint8_t day_of_wk = (temp_val & 0x07);	// save day of week
+  uint8_t Vcc_flt = (temp_val & 0x10);		// determine Vcc fault
+  
+  if(0 != Vcc_flt) // fault was detected
+  {
+	// clear Vcc fault bit, preserve Day of Week
+	Wire.beginTransmission(MCP7941X_ADDRESS);
+	Wire._I2C_WRITE((uint8_t)3);				// start at RTCC reg 0x03
+	Wire._I2C_WRITE(day_of_wk);					// sets day of week, clears faults
+	Wire.endTransmission();
+	return 1;
+  }
+  else{return 0;}
+  
+
+}
+
+MCP79410SqwPinMode RTC_MCP79410::readSqwPinMode() {
+  int mode;
+
+  Wire.beginTransmission(MCP7941X_ADDRESS);
+  Wire._I2C_WRITE(MCP7941X_CTRL_REG);
+  Wire.endTransmission();
+  
+  Wire.requestFrom((uint8_t)MCP7941X_ADDRESS, (uint8_t)1);
+  mode = Wire._I2C_READ();
+
+  return static_cast<MCP79410SqwPinMode>(mode);
+}
+
+void RTC_MCP79410::writeSqwPinMode(MCP79410SqwPinMode mode) {
+  Wire.beginTransmission(MCP7941X_ADDRESS);
+  Wire._I2C_WRITE(MCP7941X_CTRL_REG);
+  Wire._I2C_WRITE(mode);
+  Wire.endTransmission();
 }
