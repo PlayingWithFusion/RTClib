@@ -1,5 +1,8 @@
 // Code by JeeLabs http://news.jeelabs.org/code/
 // Released to the public domain! Enjoy!
+// 2016May: added support for MCP79410 RTC from Microchip
+//   - J Steinlage, Playing With Fusion, Inc.
+//	 - www.playingwithfusion.com
 
 #ifndef _RTCLIB_H_
 #define _RTCLIB_H_
@@ -19,6 +22,13 @@ class TimeSpan;
 #define DS3231_ADDRESS  0x68
 #define DS3231_CONTROL  0x0E
 #define DS3231_STATUSREG 0x0F
+
+#define MCP7941X_ADDRESS  	0x6F	/* SRAM RTCC Address */
+#define MCP7941X_EE_ADD		0x57	/* EEPROM Address */
+#define MCP7941X_CTRL_REG	0x07	/* control register address */
+#define MCP7941X_BATT_BKUP_EN  1    /* battery backup enable */
+#define MCP7941X_BATT_BKUP_DIS 1    /* battery backup disable */
+//#define MCP7941X_STATUSREG 		0x0000000000000000000
 
 #define SECONDS_PER_DAY 86400L
 
@@ -118,6 +128,25 @@ public:
 
     Pcf8523SqwPinMode readSqwPinMode();
     void writeSqwPinMode(Pcf8523SqwPinMode mode);
+};
+
+// RTC based on the MCP79410 chip connected via I2C (Wire) library
+enum MCP79410SqwPinMode { MCP79410_SqWv_OFF = 0x00, MCP79410_SqWv_1Hz = 0x00, MCP79410_SqWv_4kHz = 0x41, MCP79410_SqWv_8kHz = 0x42, MCP79410_SqWv_32kHz = 0x43 };
+/*                                                                                          4.096 kHz                  8.192 kHz                  32.768kHz */
+
+class RTC_MCP79410 {
+public:
+	boolean begin(void);
+	void adjust(const DateTime& dt, uint8_t batt_bkup_en);
+	uint8_t isrunning(void);
+	static DateTime now();
+	uint8_t VccFault(void);
+	static MCP79410SqwPinMode readSqwPinMode();
+	static void writeSqwPinMode(MCP79410SqwPinMode mode);
+//	uint8_t readnvram(uint8_t address);
+//	void readnvram(uint8_t* buf, uint8_t size, uint8_t address);
+//	void writenvram(uint8_t address, uint8_t data);
+//	void writenvram(uint8_t address, uint8_t* buf, uint8_t size);
 };
 
 // RTC using the internal millis() clock, has to be initialized before use
